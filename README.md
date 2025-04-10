@@ -4,8 +4,8 @@
 ### Compiling
 <strong>Command </strong> : make
 
-### Running the Script
-<strong>Command </strong> : make run
+### Running the Script for Comparision
+<strong>Command </strong> : make compare
 
 ### To remove all the images
 <strong>Command </strong> : make clean
