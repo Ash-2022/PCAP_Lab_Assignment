@@ -208,12 +208,14 @@ int main(int argc, char **argv) {
     // CUDA kernel timing events
     cudaEvent_t start, stop;
     float kernel_time = 0.0f;
+    float total_kernel_time = 0.0f;
 
     // Gaussian Blur
     printf("Applying Gaussian Blur...\n");
     startTimer(start, stop);
     gaussian_blur<<<gridSize, blockSize>>>(d_input, d_blur, width, height);
     kernel_time = stopTimer(start, stop);
+    total_kernel_time += kernel_time;
     printf("Gaussian Blur kernel execution time: %.2f ms\n", kernel_time);
     
     // Memory copy for Gaussian Blur result
@@ -230,6 +232,7 @@ int main(int argc, char **argv) {
     startTimer(start, stop);
     sobel_filter<<<gridSize, blockSize>>>(d_blur, d_sobel, d_gradient, d_direction, width, height);
     kernel_time = stopTimer(start, stop);
+    total_kernel_time += kernel_time;
     printf("Sobel Filter kernel execution time: %.2f ms\n", kernel_time);
     
     // Memory copy for Sobel result
@@ -246,6 +249,7 @@ int main(int argc, char **argv) {
     startTimer(start, stop);
     non_maximum_suppression<<<gridSize, blockSize>>>(d_gradient, d_direction, d_nms, width, height);
     kernel_time = stopTimer(start, stop);
+    total_kernel_time += kernel_time;
     printf("Non-Maximum Suppression kernel execution time: %.2f ms\n", kernel_time);
     
     // Memory copy for NMS result
@@ -262,6 +266,7 @@ int main(int argc, char **argv) {
     startTimer(start, stop);
     double_threshold<<<gridSize, blockSize>>>(d_gradient, d_final, width, height);
     kernel_time = stopTimer(start, stop);
+    total_kernel_time += kernel_time;
     printf("Double Thresholding kernel execution time: %.2f ms\n", kernel_time);
     
     // Memory copy for threshold result
@@ -278,6 +283,7 @@ int main(int argc, char **argv) {
     startTimer(start, stop);
     edge_tracking_hysteresis<<<gridSize, blockSize>>>(d_final, width, height);
     kernel_time = stopTimer(start, stop);
+    total_kernel_time += kernel_time;
     printf("Edge Tracking with Hysteresis kernel execution time: %.2f ms\n", kernel_time);
     
     // Memory copy for final result
@@ -306,8 +312,10 @@ int main(int argc, char **argv) {
     auto end_total = high_resolution_clock::now();
     auto duration_total = duration_cast<milliseconds>(end_total - start_total);
     printf("\n========================================\n");
+    printf("Total kernel execution time: %.2f ms\n", total_kernel_time);
     printf("Total execution time: %lld ms\n", duration_total.count());
     printf("========================================\n");
+    
 
     return 0;
 }

@@ -1,0 +1,24 @@
+Time taken to load image: 8 ms
+Time taken for CUDA memory allocation: 1064 ms
+Time taken for host to device transfer: 0 ms
+Applying Gaussian Blur...
+Gaussian Blur kernel execution time: 0.44 ms
+Time taken to copy Gaussian Blur result: 0 ms
+Applying Sobel Filter...
+Sobel Filter kernel execution time: 0.21 ms
+Time taken to copy Sobel Filter result: 0 ms
+Applying Non-Maximum Suppression...
+Non-Maximum Suppression kernel execution time: 0.33 ms
+Time taken to copy Non-Maximum Suppression result: 0 ms
+Applying Double Thresholding...
+Double Thresholding kernel execution time: 0.19 ms
+Time taken to copy Double Thresholding result: 0 ms
+Applying Edge Tracking with Hysteresis...
+Edge Tracking with Hysteresis kernel execution time: 0.20 ms
+Time taken to copy final result: 0 ms
+Time taken to free CUDA memory: 1 ms
+
+========================================
+Total kernel execution time: 1.35 ms
+Total execution time: 1124 ms
+========================================

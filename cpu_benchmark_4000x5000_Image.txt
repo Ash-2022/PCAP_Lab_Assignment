@@ -1,19 +1,19 @@
-Time taken to load image: 229 ms
+Time taken to load image: 102 ms
 Time taken for memory allocation: 0 ms
 Applying Gaussian Blur...
-Gaussian Blur execution time: 465 ms
+Gaussian Blur execution time: 291 ms
 Applying Sobel Filter...
-Sobel Filter execution time: 739 ms
+Sobel Filter execution time: 515 ms
 Applying Non-Maximum Suppression...
-Non-Maximum Suppression execution time: 459 ms
+Non-Maximum Suppression execution time: 475 ms
 Applying Double Thresholding...
-Double Thresholding execution time: 20 ms
+Double Thresholding execution time: 14 ms
 Applying Edge Tracking with Hysteresis...
-Edge Tracking with Hysteresis execution time: 40 ms
+Edge Tracking with Hysteresis execution time: 36 ms
 Time taken to free memory: 0 ms
 
-Total kernel execution time: 1723 ms
+Total kernel execution time: 1331 ms
 
 ========================================
-Total execution time: 2719 ms
+Total execution time: 2032 ms
 ========================================
