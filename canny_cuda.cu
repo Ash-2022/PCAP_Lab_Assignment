@@ -3,12 +3,14 @@
 #include <opencv2/opencv.hpp>
 #include <cuda_runtime.h>
 #include <math.h>
+#include <chrono>  // For time measurement
 
 #define BLOCK_SIZE 16
 #define LOW_THRESHOLD 50
 #define HIGH_THRESHOLD 150
 
 using namespace cv;
+using namespace std::chrono;  // For time measurement
 
 #define CHECK_CUDA_ERROR(call) { \
     cudaError_t err = call; \
@@ -16,6 +18,23 @@ using namespace cv;
         printf("CUDA Error at %s:%d - %s\n", __FILE__, __LINE__, cudaGetErrorString(err)); \
         exit(EXIT_FAILURE); \
     } \
+}
+
+// Helper function to measure CUDA kernel execution time
+void startTimer(cudaEvent_t &start, cudaEvent_t &stop) {
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+    cudaEventRecord(start);
+}
+
+float stopTimer(cudaEvent_t &start, cudaEvent_t &stop) {
+    float milliseconds = 0;
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&milliseconds, start, stop);
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
+    return milliseconds;
 }
 
 __global__ void gaussian_blur(unsigned char *input, unsigned char *output, int width, int height) {
@@ -136,22 +155,32 @@ __global__ void edge_tracking_hysteresis(unsigned char *image, int width, int he
 }
 
 int main(int argc, char **argv) {
+    // Start total time measurement
+    auto start_total = high_resolution_clock::now();
+    
     if (argc != 2) {
         printf("Usage: %s <image_path>\n", argv[0]);
         return -1;
     }
 
+    // Start image loading time measurement
+    auto start_load = high_resolution_clock::now();
     Mat image = imread(argv[1], IMREAD_GRAYSCALE);
     if (image.empty()) {
         printf("Failed to load image\n");
         return -1;
     }
+    auto end_load = high_resolution_clock::now();
+    auto duration_load = duration_cast<milliseconds>(end_load - start_load);
+    printf("Time taken to load image: %lld ms\n", duration_load.count());
 
     int width = image.cols;
     int height = image.rows;
     size_t img_size = width * height * sizeof(unsigned char);
     size_t grad_size = width * height * sizeof(float);
 
+    // Start memory allocation time measurement
+    auto start_alloc = high_resolution_clock::now();
     unsigned char *d_input, *d_blur, *d_sobel, *d_nms, *d_final;
     float *d_gradient, *d_direction;
     
@@ -162,54 +191,106 @@ int main(int argc, char **argv) {
     CHECK_CUDA_ERROR(cudaMalloc(&d_final, img_size));
     CHECK_CUDA_ERROR(cudaMalloc(&d_gradient, grad_size));
     CHECK_CUDA_ERROR(cudaMalloc(&d_direction, grad_size));
+    auto end_alloc = high_resolution_clock::now();
+    auto duration_alloc = duration_cast<milliseconds>(end_alloc - start_alloc);
+    printf("Time taken for CUDA memory allocation: %lld ms\n", duration_alloc.count());
     
+    // Memory transfer time (host to device)
+    auto start_h2d = high_resolution_clock::now();
     CHECK_CUDA_ERROR(cudaMemcpy(d_input, image.data, img_size, cudaMemcpyHostToDevice));
+    auto end_h2d = high_resolution_clock::now();
+    auto duration_h2d = duration_cast<milliseconds>(end_h2d - start_h2d);
+    printf("Time taken for host to device transfer: %lld ms\n", duration_h2d.count());
 
     dim3 blockSize(BLOCK_SIZE, BLOCK_SIZE);
     dim3 gridSize((width + BLOCK_SIZE - 1) / BLOCK_SIZE, (height + BLOCK_SIZE - 1) / BLOCK_SIZE);
 
+    // CUDA kernel timing events
+    cudaEvent_t start, stop;
+    float kernel_time = 0.0f;
+
+    // Gaussian Blur
     printf("Applying Gaussian Blur...\n");
+    startTimer(start, stop);
     gaussian_blur<<<gridSize, blockSize>>>(d_input, d_blur, width, height);
-    CHECK_CUDA_ERROR(cudaDeviceSynchronize());
+    kernel_time = stopTimer(start, stop);
+    printf("Gaussian Blur kernel execution time: %.2f ms\n", kernel_time);
     
+    // Memory copy for Gaussian Blur result
+    auto start_blur_copy = high_resolution_clock::now();
     Mat blurred(height, width, CV_8UC1);
     CHECK_CUDA_ERROR(cudaMemcpy(blurred.data, d_blur, img_size, cudaMemcpyDeviceToHost));
+    auto end_blur_copy = high_resolution_clock::now();
+    auto duration_blur_copy = duration_cast<milliseconds>(end_blur_copy - start_blur_copy);
+    printf("Time taken to copy Gaussian Blur result: %lld ms\n", duration_blur_copy.count());
     imwrite("gaussian_blur.png", blurred);
     
+    // Sobel Filter
     printf("Applying Sobel Filter...\n");
+    startTimer(start, stop);
     sobel_filter<<<gridSize, blockSize>>>(d_blur, d_sobel, d_gradient, d_direction, width, height);
-    CHECK_CUDA_ERROR(cudaDeviceSynchronize());
+    kernel_time = stopTimer(start, stop);
+    printf("Sobel Filter kernel execution time: %.2f ms\n", kernel_time);
     
+    // Memory copy for Sobel result
+    auto start_sobel_copy = high_resolution_clock::now();
     Mat sobel(height, width, CV_8UC1);
     CHECK_CUDA_ERROR(cudaMemcpy(sobel.data, d_sobel, img_size, cudaMemcpyDeviceToHost));
+    auto end_sobel_copy = high_resolution_clock::now();
+    auto duration_sobel_copy = duration_cast<milliseconds>(end_sobel_copy - start_sobel_copy);
+    printf("Time taken to copy Sobel Filter result: %lld ms\n", duration_sobel_copy.count());
     imwrite("sobel.png", sobel);
 
+    // Non-Maximum Suppression
     printf("Applying Non-Maximum Suppression...\n");
+    startTimer(start, stop);
     non_maximum_suppression<<<gridSize, blockSize>>>(d_gradient, d_direction, d_nms, width, height);
-    CHECK_CUDA_ERROR(cudaDeviceSynchronize());
+    kernel_time = stopTimer(start, stop);
+    printf("Non-Maximum Suppression kernel execution time: %.2f ms\n", kernel_time);
     
+    // Memory copy for NMS result
+    auto start_nms_copy = high_resolution_clock::now();
     Mat nms(height, width, CV_8UC1);
     CHECK_CUDA_ERROR(cudaMemcpy(nms.data, d_nms, img_size, cudaMemcpyDeviceToHost));
+    auto end_nms_copy = high_resolution_clock::now();
+    auto duration_nms_copy = duration_cast<milliseconds>(end_nms_copy - start_nms_copy);
+    printf("Time taken to copy Non-Maximum Suppression result: %lld ms\n", duration_nms_copy.count());
     imwrite("nms.png", nms);
     
+    // Double Thresholding
     printf("Applying Double Thresholding...\n");
+    startTimer(start, stop);
     double_threshold<<<gridSize, blockSize>>>(d_gradient, d_final, width, height);
-    CHECK_CUDA_ERROR(cudaDeviceSynchronize());
+    kernel_time = stopTimer(start, stop);
+    printf("Double Thresholding kernel execution time: %.2f ms\n", kernel_time);
     
+    // Memory copy for threshold result
+    auto start_threshold_copy = high_resolution_clock::now();
     Mat thresholded(height, width, CV_8UC1);
     CHECK_CUDA_ERROR(cudaMemcpy(thresholded.data, d_final, img_size, cudaMemcpyDeviceToHost));
+    auto end_threshold_copy = high_resolution_clock::now();
+    auto duration_threshold_copy = duration_cast<milliseconds>(end_threshold_copy - start_threshold_copy);
+    printf("Time taken to copy Double Thresholding result: %lld ms\n", duration_threshold_copy.count());
     imwrite("double_threshold.png", thresholded);
     
+    // Edge Tracking with Hysteresis
     printf("Applying Edge Tracking with Hysteresis...\n");
+    startTimer(start, stop);
     edge_tracking_hysteresis<<<gridSize, blockSize>>>(d_final, width, height);
-    CHECK_CUDA_ERROR(cudaDeviceSynchronize());
+    kernel_time = stopTimer(start, stop);
+    printf("Edge Tracking with Hysteresis kernel execution time: %.2f ms\n", kernel_time);
     
+    // Memory copy for final result
+    auto start_final_copy = high_resolution_clock::now();
     Mat hysteresis(height, width, CV_8UC1);
     CHECK_CUDA_ERROR(cudaMemcpy(hysteresis.data, d_final, img_size, cudaMemcpyDeviceToHost));
+    auto end_final_copy = high_resolution_clock::now();
+    auto duration_final_copy = duration_cast<milliseconds>(end_final_copy - start_final_copy);
+    printf("Time taken to copy final result: %lld ms\n", duration_final_copy.count());
     imwrite("hysteresis.png", hysteresis);
 
-    printf("Edge Detection Completed. Images saved.\n");
-
+    // Free CUDA memory
+    auto start_free = high_resolution_clock::now();
     cudaFree(d_input);
     cudaFree(d_blur);
     cudaFree(d_sobel);
@@ -217,6 +298,16 @@ int main(int argc, char **argv) {
     cudaFree(d_final);
     cudaFree(d_gradient);
     cudaFree(d_direction);
+    auto end_free = high_resolution_clock::now();
+    auto duration_free = duration_cast<milliseconds>(end_free - start_free);
+    printf("Time taken to free CUDA memory: %lld ms\n", duration_free.count());
+
+    // End total time measurement
+    auto end_total = high_resolution_clock::now();
+    auto duration_total = duration_cast<milliseconds>(end_total - start_total);
+    printf("\n========================================\n");
+    printf("Total execution time: %lld ms\n", duration_total.count());
+    printf("========================================\n");
 
     return 0;
 }
